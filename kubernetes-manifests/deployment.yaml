@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shelly-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: shelly-exporter
+  template:
+    metadata:
+      labels:
+        app: shelly-exporter
+    spec:
+      containers:
+      - name: shelly-exporter
+        image: jwschman/simple-shelly-exporter:main
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 2112
+        env:
+        - name: SHELLY_HOST
+          value: "192.168.1.123"
+        - name: SHELLY_PASSWORD
+          value: "changeme"
