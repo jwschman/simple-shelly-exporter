@@ -16,7 +16,13 @@ import (
 // pulled from https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#MustRegister
 // we'll add more here later if i feel like they're necessary
 type metrics struct {
-	power prometheus.Gauge
+	power           prometheus.Gauge
+	total_power     prometheus.Counter
+	voltage         prometheus.Gauge
+	output          prometheus.Gauge
+	uptime          prometheus.Gauge
+	temperature     prometheus.Gauge
+	signal_strength prometheus.Gauge
 }
 
 // environment variables
@@ -35,19 +41,24 @@ func init() {
 }
 
 // JSON structure returned from GET on the shelly plug
-// i'm going to put some possible extra ones in here that i may use, but for now i just actually want apower
 type ShellyStatus struct {
 	Switch0 struct {
-		Apower  float64 `json:"apower"`  // active power
+		Output  bool    `json:"output"`  // switch state (on/off)
+		Apower  float64 `json:"apower"`  // active power in watts
 		Voltage float64 `json:"voltage"` // line voltage
-		Current float64 `json:"current"` // current in amperes
+		Aenergy struct {
+			Total float64 `json:"total"` // total energy in watt-hours
+		} `json:"aenergy"`
+		Temperature struct {
+			TC float64 `json:"tC"` // temperature celsius
+		} `json:"temperature"`
 	} `json:"switch:0"`
 	Sys struct {
-		Uptime int64 `json:"uptime"` // uptime in... something?  seconds?
+		Uptime int64 `json:"uptime"` // uptime in seconds
 	} `json:"sys"`
-	Temperature struct {
-		TC float64 `json:"tC"` // temperature celcius
-	} `json:"temperature"`
+	Wifi struct {
+		Rssi int `json:"rssi"` // WiFi signal strength in dBm
+	} `json:"wifi"`
 }
 
 // make new metrics (also pulled from docs)
@@ -58,8 +69,37 @@ func NewMetrics(reg prometheus.Registerer) *metrics {
 			Name: "shelly_power_watts",
 			Help: "Current power consumption in watts.",
 		}),
+		total_power: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "shelly_energy_total_watthours",
+			Help: "Total power consumption of plug",
+		}),
+		voltage: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "shelly_voltage_volts",
+			Help: "Line voltage in volts",
+		}),
+		output: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "shelly_plug_output",
+			Help: "The state of output on the plug.  0 for off, 1 for on",
+		}),
+		uptime: prometheus.NewGauge(prometheus.GaugeOpts{ // i think it may reset to 0 on reset so keep it as a gague
+			Name: "shelly_plug_uptime_seconds",
+			Help: "Uptime of the shelly plug",
+		}),
+		temperature: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "shelly_plug_temp_celsius",
+			Help: "Temperature of the plug",
+		}),
+		signal_strength: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "shelly_plug_signal_strength_rssi",
+			Help: "WiFi signal strength in dBm",
+		}),
 	}
 	reg.MustRegister(m.power)
+	reg.MustRegister(m.total_power)
+	reg.MustRegister(m.uptime)
+	reg.MustRegister(m.output)
+	reg.MustRegister(m.temperature)
+	reg.MustRegister(m.signal_strength)
 	return m
 }
 
@@ -89,14 +129,30 @@ func scrapeShelly(m metrics) error {
 		return fmt.Errorf("error reading response: %w", err)
 	}
 
+	// print entire bdy to log (for testing at the moment.  just want to see what all is there)
+	log.Printf("Received payload:\n\n%s", string(body))
+
 	// unmarshal body to json
 	var meter ShellyStatus
 	if err := json.Unmarshal(body, &meter); err != nil {
 		return fmt.Errorf("error parsing JSON: %w", err)
 	}
 
-	// set power usage
+	// set metrics
 	m.power.Set(meter.Switch0.Apower)
+	m.voltage.Set(meter.Switch0.Voltage)
+	m.total_power.Add(meter.Switch0.Aenergy.Total) // Note: Add for Counter, not Set
+
+	// Convert bool to float64 (1.0 for true/on, 0.0 for false/off)
+	if meter.Switch0.Output {
+		m.output.Set(1.0)
+	} else {
+		m.output.Set(0.0)
+	}
+
+	m.uptime.Set(float64(meter.Sys.Uptime))
+	m.temperature.Set(meter.Switch0.Temperature.TC)
+	m.signal_strength.Set(float64(meter.Wifi.Rssi))
 
 	return nil
 }
