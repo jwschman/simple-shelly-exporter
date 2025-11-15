@@ -17,7 +17,7 @@ import (
 // we'll add more here later if i feel like they're necessary
 type metrics struct {
 	power           prometheus.Gauge
-	total_power     prometheus.Counter
+	total_power     prometheus.Gauge
 	voltage         prometheus.Gauge
 	output          prometheus.Gauge
 	uptime          prometheus.Gauge
@@ -69,7 +69,7 @@ func NewMetrics(reg prometheus.Registerer) *metrics {
 			Name: "shelly_power_watts",
 			Help: "Current power consumption in watts.",
 		}),
-		total_power: prometheus.NewCounter(prometheus.CounterOpts{
+		total_power: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "shelly_energy_total_watthours",
 			Help: "Total power consumption of plug",
 		}),
@@ -141,7 +141,7 @@ func scrapeShelly(m metrics) error {
 	// set metrics
 	m.power.Set(meter.Switch0.Apower)
 	m.voltage.Set(meter.Switch0.Voltage)
-	m.total_power.Add(meter.Switch0.Aenergy.Total) // Note: Add for Counter, not Set
+	m.total_power.Set(meter.Switch0.Aenergy.Total)
 
 	// Convert bool to float64 (1.0 for true/on, 0.0 for false/off)
 	if meter.Switch0.Output {
