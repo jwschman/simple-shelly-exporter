@@ -70,7 +70,7 @@ func NewMetrics(reg prometheus.Registerer) *metrics {
 			Help: "Current power consumption in watts.",
 		}),
 		total_power: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "shelly_energy_total_watthours",
+			Name: "shelly_energy_watthours_total",
 			Help: "Total power consumption of plug",
 		}),
 		voltage: prometheus.NewGauge(prometheus.GaugeOpts{
