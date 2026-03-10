@@ -17,12 +17,29 @@ spec:
     spec:
       containers:
       - name: shelly-exporter
-        image: jwschman/simple-shelly-exporter:main
+        image: jwschman/simple-shelly-exporter:0.1.0
         imagePullPolicy: Always
         ports:
         - containerPort: 2112
         env:
         - name: SHELLY_HOST
-          value: "192.168.1.123"
-        - name: SHELLY_PASSWORD
-          value: "changeme"
+          value: "192.168.1.36"
+        # To set a password, use a Secret and set SHELLY_PASSWORD from it
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 32Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 2112
+          initialDelaySeconds: 5
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 2112
+          initialDelaySeconds: 5
+          periodSeconds: 10

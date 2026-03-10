@@ -28,10 +28,12 @@ type metrics struct {
 // environment variables
 var (
 	shellyPassword = os.Getenv("SHELLY_PASSWORD")
-	shellyHost     = "192.168.1.36" //os.Getenv("SHELLY_HOST")
+	shellyHost     = os.Getenv("SHELLY_HOST")
 	port           = os.Getenv("LISTEN_PORT")
 	shellyURL      = fmt.Sprintf("http://%s/rpc/Shelly.GetStatus", shellyHost)
 )
+
+var shellyClient = &http.Client{Timeout: 10 * time.Second}
 
 // set port to 2112 if port not set
 func init() {
@@ -96,6 +98,7 @@ func NewMetrics(reg prometheus.Registerer) *metrics {
 	}
 	reg.MustRegister(m.power)
 	reg.MustRegister(m.total_power)
+	reg.MustRegister(m.voltage)
 	reg.MustRegister(m.uptime)
 	reg.MustRegister(m.output)
 	reg.MustRegister(m.temperature)
@@ -117,7 +120,7 @@ func scrapeShelly(m metrics) error {
 	}
 
 	// fetch data with request
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := shellyClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("error fetching data from Shelly: %w", err)
 	}
@@ -128,9 +131,6 @@ func scrapeShelly(m metrics) error {
 	if err != nil {
 		return fmt.Errorf("error reading response: %w", err)
 	}
-
-	// print entire bdy to log (for testing at the moment.  just want to see what all is there)
-	log.Printf("Received payload:\n\n%s", string(body))
 
 	// unmarshal body to json
 	var meter ShellyStatus
@@ -158,6 +158,10 @@ func scrapeShelly(m metrics) error {
 }
 
 func main() {
+	if shellyHost == "" {
+		log.Fatal("SHELLY_HOST environment variable is required")
+	}
+
 	// Create a non-global registry.
 	reg := prometheus.NewRegistry()
 
@@ -179,6 +183,9 @@ func main() {
 	// Expose metrics and custom registry via an HTTP server
 	// using the HandleFor function. "/metrics" is the usual endpoint for that.
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	log.Printf("Serving metrics at :%v/metrics", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
